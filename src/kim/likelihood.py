@@ -2,7 +2,7 @@ import copy
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax.scipy.stats import truncnorm
+from jax.scipy.stats import truncnorm, norm
 from scipy.interpolate import interp1d
 import inspect 
 from nmma.em.io import loadEvent
@@ -16,10 +16,11 @@ from abc import ABC, abstractmethod
 from jimgw.base import LikelihoodBase
 
 def truncated_gaussian(m_det, m_err, m_est, upper_lim, lower_lim = -9999.0):
-    # TODO: move this to utils?
+    # TODO: move this to an utils?
 
     a, b = (lower_lim - m_est) / m_err, (upper_lim - m_est) / m_err
     logpdf = truncnorm.logpdf(m_det, a, b, loc=m_est, scale=m_err)
+    # logpdf = norm.logpdf(m_est, loc=m_det, scale=m_err)
 
     return logpdf
 
@@ -55,7 +56,6 @@ class OpticalLightCurve(LikelihoodBase):
         self.light_curve_model = light_curve_model
         self.fixed_params = fixed_params
         self.filters = filters
-        self.trigger_time = trigger_time
         self.detection_limit = detection_limit
         self.error_budget = error_budget
         self.tmin = tmin
@@ -64,7 +64,7 @@ class OpticalLightCurve(LikelihoodBase):
         
         # Process the data
         processedData = dataProcess(
-            light_curve_data, self.filters, self.trigger_time, self.tmin, self.tmax
+            light_curve_data, self.filters, trigger_time, self.tmin, self.tmax
         )
         self.light_curve_data = processedData
         self.sample_times = self.light_curve_model.sample_times
@@ -74,6 +74,7 @@ class OpticalLightCurve(LikelihoodBase):
                        data_time: jnp.array, 
                        data_mag: jnp.array, 
                        data_sigma: np.array,
+                       timeshift: float = 0.0,
                        upper_lim: float = 9999.0, 
                        lower_lim: float = -9999.0
                     ):
@@ -84,7 +85,8 @@ class OpticalLightCurve(LikelihoodBase):
         """
         
         data_sigma = jnp.sqrt(data_sigma ** 2 + self.error_budget ** 2)
-        mag_est = jnp.interp(data_time, self.sample_times + self.trigger_time, mag_app, left="extrapolate", right="extrapolate")
+        mag_est = jnp.interp(data_time, self.sample_times + timeshift, mag_app, left="extrapolate", right="extrapolate")
+        
         minus_chisquare = jnp.sum(
             truncated_gaussian(
                 data_mag,
@@ -108,9 +110,6 @@ class OpticalLightCurve(LikelihoodBase):
                 jnp.rad2deg(params["inclination_EM"])
             )
             
-        print("DEBUG: params calc lc shape")
-        print(jnp.shape(params))
-        
         params_array = jnp.array([params[key] for key in self.light_curve_model.model_parameters])
         _, _, mag_abs = calc_lc_flax(self.sample_times,
                                     params_array,
@@ -131,19 +130,16 @@ class OpticalLightCurve(LikelihoodBase):
                              params: dict) -> float:
         """
         Function taken from nmma/em/likelihood.py and adapted to this case here
-        
-        TODO: 
         """
         
         params.update(self.fixed_params)
         mag_app_dict = self.calc_lc(params)
         minus_chisquare_total = 0.0
         for filt in self.filters:
-            # TODO: remove the deepcopy? Will this work?
+            # TODO: do we need the deepcopy here?
             data_time, data_mag, data_sigma  = self.light_curve_data[filt].T
-            # data_time, data_mag, data_sigma  = self.light_curve_data[filt].T
             mag_est_filt = mag_app_dict[filt]
-            chisq_filt = self.get_chisq_filt(mag_est_filt, data_time, data_mag, data_sigma)
+            chisq_filt = self.get_chisq_filt(mag_est_filt, data_time, data_mag, data_sigma, timeshift=params["timeshift"])
             minus_chisquare_total += chisq_filt
 
         log_prob = minus_chisquare_total

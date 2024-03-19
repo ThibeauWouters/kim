@@ -46,13 +46,13 @@ class Kim(object):
         local_sampler_arg = kwargs.get("local_sampler_arg", {})
 
         # # Set the local sampler
-        # local_sampler = GaussianRandomWalk(
-        #     self.posterior, False, local_sampler_arg
-        # )  # Remember to add routine to find automated mass matrix
+        local_sampler = GaussianRandomWalk(
+            self.posterior, True, local_sampler_arg
+        )  # Remember to add routine to find automated mass matrix
         
-        local_sampler = MALA(
-                self.posterior, True, local_sampler_arg
-            )  # Remember to add routine to find automated mass matrix
+        # local_sampler = MALA(
+        #         self.posterior, True, local_sampler_arg
+        #     )  # Remember to add routine to find automated mass matrix
 
         model = MaskedCouplingRQSpline(
             self.Prior.n_dim, self.num_layers, self.hidden_size, self.num_bins, rng_key_set[-1]
@@ -84,7 +84,6 @@ class Kim(object):
         self.initial_guess = initial_guess
         self.Sampler.sample(initial_guess, None)  # type: ignore
         
-        
     def get_samples(self, training: bool = False) -> dict:
         """
         Get the samples from the sampler
@@ -107,3 +106,60 @@ class Kim(object):
 
         chains = self.Prior.transform(self.Prior.add_name(chains.transpose(2, 0, 1)))
         return chains
+    
+    def print_summary(self, transform: bool = False):
+        """
+        Generate summary of the run.
+
+        """
+
+        train_summary = self.Sampler.get_sampler_state(training=True)
+        production_summary = self.Sampler.get_sampler_state(training=False)
+
+        training_chain = train_summary["chains"].reshape(-1, self.Prior.n_dim).T
+        training_chain = self.Prior.add_name(training_chain)
+        if transform:
+            training_chain = self.Prior.transform(training_chain)
+        training_log_prob = train_summary["log_prob"]
+        training_local_acceptance = train_summary["local_accs"]
+        training_global_acceptance = train_summary["global_accs"]
+        training_loss = train_summary["loss_vals"]
+
+        production_chain = production_summary["chains"].reshape(-1, self.Prior.n_dim).T
+        production_chain = self.Prior.add_name(production_chain)
+        if transform:
+            production_chain = self.Prior.transform(production_chain)
+        production_log_prob = production_summary["log_prob"]
+        production_local_acceptance = production_summary["local_accs"]
+        production_global_acceptance = production_summary["global_accs"]
+
+        print("Training summary")
+        print("=" * 10)
+        for key, value in training_chain.items():
+            print(f"{key}: {value.mean():.3f} +/- {value.std():.3f}")
+        print(
+            f"Log probability: {training_log_prob.mean():.3f} +/- {training_log_prob.std():.3f}"
+        )
+        print(
+            f"Local acceptance: {training_local_acceptance.mean():.3f} +/- {training_local_acceptance.std():.3f}"
+        )
+        print(
+            f"Global acceptance: {training_global_acceptance.mean():.3f} +/- {training_global_acceptance.std():.3f}"
+        )
+        print(
+            f"Max loss: {training_loss.max():.3f}, Min loss: {training_loss.min():.3f}"
+        )
+
+        print("Production summary")
+        print("=" * 10)
+        for key, value in production_chain.items():
+            print(f"{key}: {value.mean():.3f} +/- {value.std():.3f}")
+        print(
+            f"Log probability: {production_log_prob.mean():.3f} +/- {production_log_prob.std():.3f}"
+        )
+        print(
+            f"Local acceptance: {production_local_acceptance.mean():.3f} +/- {production_local_acceptance.std():.3f}"
+        )
+        print(
+            f"Global acceptance: {production_global_acceptance.mean():.3f} +/- {production_global_acceptance.std():.3f}"
+        )

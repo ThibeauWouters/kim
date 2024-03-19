@@ -4,6 +4,9 @@ import inspect
 import numpy as np
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import pickle
+import utils
+import time
 # matlotlib settings
 mpl_params = {"axes.grid": True,
         "text.usetex" : False, # TODO enable latex, but this breaks if filters have underscore
@@ -50,6 +53,7 @@ import corner
 print("Checking if CUDA is found:")
 print(jax.devices())
 
+start_time = time.time()
 ### LOAD THE DATA ###
 
 data_file = "../../data/AT2017gfo_corrected_no_inf.dat"
@@ -117,7 +121,7 @@ likelihood = OpticalLightCurve(lc_model,
 
 eps = 1e-5
 mass_matrix = jnp.eye(n_dim)
-# TODO tune it here
+# TODO: tune it here
 # mass_matrix = mass_matrix.at[0,0].set(1e-5)
 # mass_matrix = mass_matrix.at[1,1].set(1e-4)
 # mass_matrix = mass_matrix.at[2,2].set(1e-3)
@@ -125,17 +129,21 @@ mass_matrix = jnp.eye(n_dim)
 # mass_matrix = mass_matrix.at[7,7].set(1e-5)
 # mass_matrix = mass_matrix.at[11,11].set(1e-2)
 # mass_matrix = mass_matrix.at[12,12].set(1e-2)
+mass_matrix = jnp.diag(mass_matrix)
+
 local_sampler_arg = {"step_size": mass_matrix * eps}
 
 outdir_name = "./outdir/"
+outdir = outdir_name
+
 kim = Kim(likelihood,
           composite_prior,
-          n_loop_training=5,
-          n_loop_production=5,
-          n_local_steps=20,
-          n_global_steps=20,
-          n_chains=100,
-          n_epochs=10,
+          n_loop_training=50,
+          n_loop_production=20,
+          n_local_steps=200,
+          n_global_steps=200,
+          n_chains=1000,
+          n_epochs=50,
           learning_rate=0.001,
           max_samples=50000,
           momentum=0.9,
@@ -145,12 +153,56 @@ kim = Kim(likelihood,
           train_thinning=10,
           output_thinning=40,
           local_sampler_arg=local_sampler_arg,
+          stopping_criterion_global_acc = 0.10,
           outdir_name=outdir_name
-          )
+)
 
 kim.sample(jax.random.PRNGKey(42))
 
+### POSTPROCESSING ###
+
 samples = kim.get_samples()
-np.savez("samples.npz", samples=samples)
+# Save samples with pickle
+with open(outdir_name + "samples.pkl", "wb") as f:
+    pickle.dump(samples, f)
+
+# Print a summary to screen:
+kim.print_summary()
+
+# Save and plot the results of the run
+#  - training phase
+
+name = outdir + f'results_training.npz'
+print(f"Saving samples to {name}")
+state = kim.Sampler.get_sampler_state(training = True)
+chains, log_prob, local_accs, global_accs, loss_vals = state["chains"], state["log_prob"], state["local_accs"], state["global_accs"], state["loss_vals"]
+local_accs = jnp.mean(local_accs, axis=0)
+global_accs = jnp.mean(global_accs, axis=0)
+np.savez(name, log_prob=log_prob, local_accs=local_accs, global_accs=global_accs, loss_vals=loss_vals)
+
+utils.plot_accs(local_accs, "Local accs (training)", "local_accs_training", outdir)
+utils.plot_accs(global_accs, "Global accs (training)", "global_accs_training", outdir)
+utils.plot_loss_vals(loss_vals, "Loss", "loss_vals", outdir)
+utils.plot_log_prob(log_prob, "Log probability (training)", "log_prob_training", outdir)
+
+#  - production phase
+name = outdir + f'results_production.npz'
+state = kim.Sampler.get_sampler_state(training = False)
+chains, log_prob, local_accs, global_accs = state["chains"], state["log_prob"], state["local_accs"], state["global_accs"]
+local_accs = jnp.mean(local_accs, axis=0)
+global_accs = jnp.mean(global_accs, axis=0)
+np.savez(name, chains=chains, log_prob=log_prob, local_accs=local_accs, global_accs=global_accs)
+
+utils.plot_accs(local_accs, "Local accs (production)", "local_accs_production", outdir)
+utils.plot_accs(global_accs, "Global accs (production)", "global_accs_production", outdir)
+utils.plot_log_prob(log_prob, "Log probability (production)", "log_prob_production", outdir)
+
+# Plot the chains as corner plots
+utils.plot_chains(chains, "chains_production", outdir)
+
+end_time = time.time()
+runtime = end_time - start_time
+
+print(f"Time taken: {runtime} seconds ({(runtime)/60} minutes)")
 
 print("DONE")
