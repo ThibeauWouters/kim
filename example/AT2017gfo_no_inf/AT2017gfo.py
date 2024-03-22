@@ -129,7 +129,8 @@ mass_matrix = jnp.eye(n_dim)
 # mass_matrix = mass_matrix.at[7,7].set(1e-5)
 # mass_matrix = mass_matrix.at[11,11].set(1e-2)
 # mass_matrix = mass_matrix.at[12,12].set(1e-2)
-mass_matrix = jnp.diag(mass_matrix)
+
+# mass_matrix = jnp.diag(mass_matrix)
 
 local_sampler_arg = {"step_size": mass_matrix * eps}
 
@@ -153,7 +154,6 @@ kim = Kim(likelihood,
           train_thinning=10,
           output_thinning=40,
           local_sampler_arg=local_sampler_arg,
-          stopping_criterion_global_acc = 0.10,
           outdir_name=outdir_name
 )
 

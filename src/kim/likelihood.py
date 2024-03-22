@@ -130,6 +130,12 @@ class OpticalLightCurve(LikelihoodBase):
                              params: dict) -> float:
         """
         Function taken from nmma/em/likelihood.py and adapted to this case here
+
+        Args:
+            params (dict): Parameters for the light curve model
+
+        Returns:
+            float: Log likelihood of the chisquare
         """
         
         params.update(self.fixed_params)

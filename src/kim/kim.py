@@ -45,14 +45,14 @@ class Kim(object):
         rng_key_set = initialize_rng_keys(self.hyperparameters["n_chains"], seed=self.hyperparameters["seed"])
         local_sampler_arg = kwargs.get("local_sampler_arg", {})
 
-        # # Set the local sampler
-        local_sampler = GaussianRandomWalk(
-            self.posterior, True, local_sampler_arg
-        )  # Remember to add routine to find automated mass matrix
+        # # # Set the local sampler
+        # local_sampler = GaussianRandomWalk(
+        #     self.posterior, True, local_sampler_arg
+        # )  # Remember to add routine to find automated mass matrix
         
-        # local_sampler = MALA(
-        #         self.posterior, True, local_sampler_arg
-        #     )  # Remember to add routine to find automated mass matrix
+        local_sampler = MALA(
+                self.posterior, True, local_sampler_arg
+            )  # Remember to add routine to find automated mass matrix
 
         model = MaskedCouplingRQSpline(
             self.Prior.n_dim, self.num_layers, self.hidden_size, self.num_bins, rng_key_set[-1]
@@ -133,22 +133,23 @@ class Kim(object):
         production_local_acceptance = production_summary["local_accs"]
         production_global_acceptance = production_summary["global_accs"]
 
-        print("Training summary")
-        print("=" * 10)
-        for key, value in training_chain.items():
-            print(f"{key}: {value.mean():.3f} +/- {value.std():.3f}")
-        print(
-            f"Log probability: {training_log_prob.mean():.3f} +/- {training_log_prob.std():.3f}"
-        )
-        print(
-            f"Local acceptance: {training_local_acceptance.mean():.3f} +/- {training_local_acceptance.std():.3f}"
-        )
-        print(
-            f"Global acceptance: {training_global_acceptance.mean():.3f} +/- {training_global_acceptance.std():.3f}"
-        )
-        print(
-            f"Max loss: {training_loss.max():.3f}, Min loss: {training_loss.min():.3f}"
-        )
+        if self.Sampler.use_global:
+            print("Training summary")
+            print("=" * 10)
+            for key, value in training_chain.items():
+                print(f"{key}: {value.mean():.3f} +/- {value.std():.3f}")
+            print(
+                f"Log probability: {training_log_prob.mean():.3f} +/- {training_log_prob.std():.3f}"
+            )
+            print(
+                f"Local acceptance: {training_local_acceptance.mean():.3f} +/- {training_local_acceptance.std():.3f}"
+            )
+            print(
+                f"Global acceptance: {training_global_acceptance.mean():.3f} +/- {training_global_acceptance.std():.3f}"
+            )
+            print(
+                f"Max loss: {training_loss.max():.3f}, Min loss: {training_loss.min():.3f}"
+            )
 
         print("Production summary")
         print("=" * 10)
